@@ -14,7 +14,3 @@ set shiftwidth=2
 
 set showmatch
 
-" Solarized Dark
-set background=dark
-let g:solarized_termtrans = 1
-colorscheme solarized
