@@ -15,6 +15,8 @@ set hlsearch
 
 set showmatch
 
+set relativenumber
+
 execute pathogen#infect()
 
 " Solarized Dark
