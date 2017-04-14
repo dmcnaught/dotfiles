@@ -104,6 +104,7 @@ deploy () {
       deis logs -a ${deis_app}
       ";
       ./deis logs -a ${deis_app};
+      exit 1
     }
   else
     echo "Grep deploy log didn't show failure to fit on existing nodes.
