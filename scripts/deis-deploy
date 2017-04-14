@@ -55,7 +55,6 @@ while getopts "a:d:e:r:t:vP" opt; do
 done
 shift $((OPTIND-1))
 
-: "${quay_repo_name:?Must export QUAY_REPO_NAME or provide -r}"
 : "${deis_app:?Must provide DEIS_APP_NAME or provide -d}"
 : "${deis_deploy_user_pass:?Must provide DEIS_DEPLOY_USER_PASS as ENV Var}"
 : "${deis_url:?Must provide DEIS_URL as ENV Var - check login-<env> in https://github.com/welltok/kubernetes/tree/master/deis}"
@@ -99,7 +98,7 @@ deploy () {
     echo "Failed to fit on any node. Kubernetes cluster will probably be scaling up now,
     so we'll try again"
     sleep 120
-    ./deis pull quay.io/welltok/${quay_repo_name}:${image_tag} -a ${deis_app}  || {
+    ./deis config:set test=newone -a ${deis_app}  || {
       echo "
       Failed again.
       deis logs -a ${deis_app}
