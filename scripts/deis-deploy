@@ -94,6 +94,7 @@ deploy () {
   ";
   set +e
   ./deis logs -a ${deis_app} | tee logs.out
+  echo "Running Grep"
   if grep "failed to fit in any node" logs.out; then
     echo "Failed to fit on any node. Kubernetes cluster will probably be scaling up now,
     so we'll try again"
@@ -106,6 +107,7 @@ deploy () {
       ./deis logs -a ${deis_app};
     }
   else
+    echo "Grep no - exit 1"
     exit 1
   fi
   set -e
