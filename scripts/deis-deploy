@@ -105,6 +105,8 @@ deploy () {
       ";
       ./deis logs -a ${deis_app};
     }
+  else
+    exit 1
   fi
   set -e
   }
