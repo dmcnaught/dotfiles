@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -e
+
+# DO NOT EDIT THIS SCRIPT BY HAND!
+# IT SHOULD BE INSTALLED FROM THE docker-deploy-harness REPOSITORY.
+# NOT COMPATIBLE WITH MULTI-CONTAINER EB
+
+# Usage scripts/deploy [-r quay_repo_name] [-d deis_app] [-c deis_url] [-t tag] [-vP]
+#   Params are required, except tag and volumes, if you haven't set the appropriate environment variables.
+#
+#   -v creates a file on container: /tmp/host-tmp,  used to notify the container it's on the leader
+#   -P don't push the container, useful for debugging EB issues
+#
+# Note: run scripts/build first to make sure the image is tagged properly.
+
+# Defaults
+# shellcheck disable=SC2153
+{
+  quay_repo_name=$QUAY_REPO_NAME
+  deis_app=$DEIS_APPLICATION_NAME
+  deis_deploy_user_pass=$DEIS_DEPLOY_USER_PASS
+  deis_url=$DEIS_URL
+}
+git_revision=$(git rev-parse HEAD)
+image_tag=${git_revision:1:7}
+push_image="yes"
+
+# CLI Override
+while getopts "a:d:e:r:t:vP" opt; do
+  case $opt in
+    c)
+      deis_url=${OPTARG}
+      ;;
+    d)
+      deis_app=${OPTARG}
+      ;;
+    r)
+      quay_repo_name=${OPTARG}
+      ;;
+    t)
+      image_tag=${OPTARG}
+      ;;
+    v)
+      unescaped="[{ \"HostDirectory\": \"/tmp\", \"ContainerDirectory\": \"/tmp/host-tmp\" }]"
+      volumes=${unescaped//\//\\/}
+      ;;
+    P)
+      push_image=
+      ;;
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+      exit 1
+      ;;
+  esac
+done
+shift $((OPTIND-1))
+
+: "${quay_repo_name:?Must export QUAY_REPO_NAME or provide -r}"
+: "${deis_app:?Must provide DEIS_APP_NAME or provide -d}"
+: "${deis_deploy_user_pass:?Must provide DEIS_DEPLOY_USER_PASS as ENV Var}"
+: "${deis_url:?Must provide DEIS_URL as ENV Var - check login-<env> in https://github.com/welltok/kubernetes/tree/master/deis}"
+
+# Make the tag unique so it will deploy
+now=$(date -u "+%Y%m%d%H%M%S")
+tag="${now}-${image_tag}"
+
+staging_dir=$(mktemp -d "/tmp/${tag}.XXX")
+logfile=${staging_dir}/build.log
+
+sync_docker_image () {
+  if [ "${push_image}" == "yes" ]; then
+    echo "-- pushing docker image to quay"
+    docker push "quay.io/welltok/${quay_repo_name}:${image_tag}" >>"${logfile}"
+  fi
+}
+
+deploy () {
+  echo "-- Setting up Deis CLI and logging in"
+  wget http://deis.io/deis-cli/install-v2.sh
+  chmod +x install-v2.sh
+  ./install-v2.sh v2.11.0
+  ./deis login --username=deploy --password=${deis_deploy_user_pass} ${deis_url}
+
+  echo "-- Updating env if .env.update exists"
+  if [ -f .env.update ]; then
+    cp -f .env.update .env
+    ./deis config:push -a ${deis_app}
+  fi
+
+  echo "-- Deploying quay.io/welltok/${quay_repo_name}:${image_tag}"
+  ./deis config:set test=newone -a ${deis_app} || {
+    echo "
+  Deploy failed.
+  deis logs -a ${deis_app} | tee logs.out
+  ";
+  set +e
+  ./deis logs -a ${deis_app} | tee logs.out
+  if grep "failed to fit in any node" logs.out; then
+    echo "Failed to fit on any node. Kubernetes cluster will probably be scaling up now,
+    so we'll try again"
+    sleep 120
+    ./deis pull quay.io/welltok/${quay_repo_name}:${image_tag} -a ${deis_app}  || {
+      echo "
+      Failed again.
+      deis logs -a ${deis_app}
+      ";
+      ./deis logs -a ${deis_app};
+    }
+  fi
+  set -e
+  }
+}
+
+######################################
+
+#sync_docker_image
+deploy
