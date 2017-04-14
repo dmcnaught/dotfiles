@@ -90,24 +90,28 @@ deploy () {
   ./deis config:set test=newone -a ${deis_app} || {
     echo "
   Deploy failed.
-  deis logs -a ${deis_app} | tee logs.out
+  Checking if it might be fixed by scaling
   ";
   set +e
-  ./deis logs -a ${deis_app} | tee logs.out
-  echo "Running Grep"
-  if grep "failed to fit in any node" logs.out; then
-    echo "Failed to fit on any node. Kubernetes cluster will probably be scaling up now,
-    so we'll try again"
-    sleep 120
+  ./deis config:set test=newone -a ${deis_app} 2>&1 | tee deploy.out
+  if grep "failed to fit in any node" deploy.out; then
+    echo "Grep of deploy log showed failed to fit on any node. Kubernetes cluster should be scaling up now,
+    so we'll try again in 3 minutes"
+    sleep 180
     ./deis config:set test=newone -a ${deis_app}  || {
       echo "
-      Failed again.
+      Failed again, getting logs.
       deis logs -a ${deis_app}
       ";
       ./deis logs -a ${deis_app};
     }
   else
-    echo "Grep no - exit 1"
+    echo "Grep deploy log didn't show failure to fit on existing nodes.
+    Getting Logs
+    Exiting failed.
+    deis logs -a ${deis_app}
+    ";
+    ./deis logs -a ${deis_app};
     exit 1
   fi
   set -e
